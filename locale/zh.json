@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "工作区外会话",
+    "description": "在文档目录下的默认位置开始一个不属于任何已注册工作区的会话（类似 Codex 的 projectless 会话）。"
+  }
+}

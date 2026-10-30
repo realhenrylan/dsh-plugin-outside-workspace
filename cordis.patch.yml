@@ -1,0 +1,6 @@
+# dsh-outside-workspace bundle patch — inserting this row activates the plugin.
+# The Host half only contributes the inventory entry; all behavior lives in the
+# browser half exported as ./client.
+- insert:
+    - id: outside-workspace
+      name: 'dsh-outside-workspace'

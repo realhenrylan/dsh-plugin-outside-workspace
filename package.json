@@ -1,0 +1,48 @@
+{
+  "name": "dsh-outside-workspace",
+  "version": "0.1.0",
+  "description": "Create a DSH session outside every workspace (Codex-style projectless chat) in a default directory under Documents.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/realhenrylan/dsh-plugin-outside-workspace.git"
+  },
+  "homepage": "https://github.com/realhenrylan/dsh-plugin-outside-workspace#readme",
+  "bugs": {
+    "url": "https://github.com/realhenrylan/dsh-plugin-outside-workspace/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "workspace",
+    "projectless"
+  ]
+}
