@@ -53,10 +53,9 @@
  *    outside Session is restored by the Workspace UI but no longer gets the
  *    composer takeover (its stock composer stays inert until a message is
  *    admitted by another path). Bounded to MAX_TRACKED entries.
- *  - Only the first plain-text prompt is handled here (no attachments, no
- *    command chips, no queue/steer choice); the composer's `+` control reports
- *    that limitation. Model and permission selections are the stock seats and
- *    do work. After the first message the stock composer owns everything.
+ *  - The first prompt supports text and browser files, but not command chips or
+ *    queue/steer choice. Images use the Host image payload; other files use
+ *    staged upload receipts. After the first message the stock composer owns everything.
  *  - The start-page clone renders the stock control entries through the public
  *    Slots inspection API (`entriesOfSlot`/`spec`) and the standard Session kit
  *    the takeover itself receives. If a future DSH build stops exposing those
@@ -147,7 +146,8 @@ window.__ModuleLoader__.load({
       'entry.outsideProject': '不在项目中',
       'sidebar.createFailed': '无法在「未分组」中新建会话：{message}',
       'composer.sendFailed': '发送失败：{message}',
-      'composer.limit': '工作区外会话的首条消息暂不支持添加文件或指令，发送后会恢复标准输入框',
+      'composer.addFiles': '添加文件或图片',
+      'composer.removeFile': '移除附件',
     };
 
     const EN = {
@@ -159,7 +159,8 @@ window.__ModuleLoader__.load({
       'entry.outsideProject': 'Not in a project',
       'sidebar.createFailed': 'Could not start a new session in Ungrouped: {message}',
       'composer.sendFailed': 'Send failed: {message}',
-      'composer.limit': 'Files and commands are not available for the first message outside a workspace; the standard composer returns after sending',
+      'composer.addFiles': 'Add files or images',
+      'composer.removeFile': 'Remove attachment',
     };
 
     // ---------------------------------------------------------------------
@@ -255,6 +256,9 @@ window.__ModuleLoader__.load({
 .dsh-outside-ws-input:disabled {
   opacity: 0.7;
 }
+.dsh-outside-ws-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; }
+.dsh-outside-ws-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; overflow-wrap: anywhere; }
+.dsh-outside-ws-file button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; }
 /* The stock Ungrouped new-session control while this plugin creates the Session. */
 [data-dsh-outside-workspace-creating="true"] {
   opacity: 0.55;
@@ -637,10 +641,29 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Send the first plain-text prompt through a retained Session reference.
+     * Send the first prompt and its attachments through a retained Session reference.
      * Business failures are folded into a thrown Error so the card can show them.
      */
-    async function sendFirstPrompt(ctx, sessionId, text) {
+    async function sendFirstPrompt(ctx, sessionId, text, files) {
+      const content = [];
+      for (const file of files) {
+        if (['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(reader.error || new Error('image read failed'));
+            reader.onload = () => resolve(String(reader.result).split(',', 2)[1]);
+            reader.readAsDataURL(file);
+          });
+          content.push({ type: 'image', mediaType: file.type, data, ...(file.name ? { name: file.name } : {}) });
+        } else {
+          const upload = serviceOf(ctx, 'fileUpload');
+          if (!upload || typeof upload.upload !== 'function') throw new Error('file upload service is unavailable');
+          const result = await upload.upload(sessionId, file, file.name || undefined);
+          if (!result || !result.ok) throw new Error(errorText(result && result.error));
+          content.push({ type: 'file', receiptId: result.value.receiptId });
+        }
+      }
+      if (text.trim() !== '') content.push({ type: 'text', text });
       const sessions = serviceOf(ctx, 'sessions');
       if (sessions === undefined || typeof sessions.using !== 'function') {
         throw new Error('the session service is unavailable');
@@ -652,7 +675,7 @@ window.__ModuleLoader__.load({
         if (session === undefined || typeof session.prompt !== 'function') {
           throw new Error('the session is not open');
         }
-        const result = await session.prompt([{ type: 'text', text }], 'queue');
+        const result = await session.prompt(content, 'queue');
         if (result !== null && typeof result === 'object' && result.ok === false) {
           throw new Error(errorText(result.error));
         }
@@ -1116,6 +1139,9 @@ window.__ModuleLoader__.load({
       const stockT = React.useMemo(() => stockTranslator(localeFace), [localeFace]);
 
       const [text, setText] = React.useState('');
+      const [files, setFiles] = React.useState([]);
+      const fileInputRef = React.useRef(null);
+      const addFiles = (incoming) => setFiles((current) => current.concat(Array.from(incoming || [])));
       const [sending, setSending] = React.useState(false);
       const textareaRef = React.useRef(null);
       const sendingRef = React.useRef(false);
@@ -1146,7 +1172,7 @@ window.__ModuleLoader__.load({
       const submit = React.useCallback(() => {
         if (sendingRef.current) return;
         if (sessionId === undefined) return;
-        if (text.trim() === '') return;
+        if (text.trim() === '' && files.length === 0) return;
         if (typeof send !== 'function') {
           showPluginNotice(t('composer.sendFailed', { message: t('entry.unavailable') }));
           return;
@@ -1154,7 +1180,7 @@ window.__ModuleLoader__.load({
         sendingRef.current = true;
         setSending(true);
         Promise.resolve()
-          .then(() => send(sessionId, text))
+          .then(() => send(sessionId, text, files))
           .then(() => {
             if (!mountedRef.current) return;
             setText('');
@@ -1169,7 +1195,7 @@ window.__ModuleLoader__.load({
           .finally(() => {
             sendingRef.current = false;
           });
-      }, [send, sessionId, t, text]);
+      }, [send, sessionId, t, text, files]);
 
       const onKeyDown = React.useCallback((event) => {
         if (event === null || typeof event !== 'object') return;
@@ -1189,13 +1215,13 @@ window.__ModuleLoader__.load({
 
       if (sessionId === undefined) return null;
 
-      const canSend = !sending && text.trim() !== '';
+      const canSend = !sending && (text.trim() !== '' || files.length > 0);
       const outsideLabel = t('entry.outsideProject');
       const headline = stockT('hero.headline');
       const preview = stockT('hero.preview');
       const placeholder = stockT('placeholder.hero');
       const sendLabel = stockT('input.send');
-      const addLabel = stockT('input.commands');
+      const addLabel = t('composer.addFiles');
 
       // Standard Session kit for the stock control entries: everything this
       // entry received except the plugin's own inject and chain share.
@@ -1288,7 +1314,11 @@ window.__ModuleLoader__.load({
             className: 'GRgSLq_card',
             'data-composer-card': 'true',
             'data-dsh-outside-workspace': 'card',
+            onDragOver: (event) => { if (event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files')) event.preventDefault(); },
+            onDrop: (event) => { if (event.dataTransfer && event.dataTransfer.files.length) { event.preventDefault(); if (!sending) addFiles(event.dataTransfer.files); } },
           },
+            files.length > 0 && h('div', { className: 'dsh-outside-ws-files' }, files.map((file, index) => h('span', { className: 'dsh-outside-ws-file', key: index }, file.name || file.type, h('button', { type: 'button', disabled: sending, 'aria-label': t('composer.removeFile') + ': ' + (file.name || file.type), onClick: () => setFiles((current) => current.filter((_, i) => i !== index)) }, '×')))),
+            h('input', { ref: fileInputRef, type: 'file', multiple: true, hidden: true, onChange: (event) => { addFiles(event.target.files); event.target.value = ''; } }),
             h('div', { className: 'GRgSLq_scroll', 'data-input-scroll': 'true' },
               h('div', { className: 'GRgSLq_grow' },
                 h('textarea', {
@@ -1303,6 +1333,7 @@ window.__ModuleLoader__.load({
                   disabled: sending,
                   onChange,
                   onKeyDown,
+                  onPaste: (event) => { const pasted = Array.from(event.clipboardData?.files || []); if (pasted.length) { if (!event.clipboardData.getData('text/plain')) event.preventDefault(); addFiles(pasted); } },
                 }),
               ),
             ),
@@ -1315,7 +1346,7 @@ window.__ModuleLoader__.load({
                   title: addLabel,
                   onClick: (event) => {
                     if (event !== null && typeof event.preventDefault === 'function') event.preventDefault();
-                    showPluginNotice(t('composer.limit'));
+                    if (!sending && fileInputRef.current) fileInputRef.current.click();
                   },
                 }, plusIcon),
                 h('div', { className: 'GRgSLq_modes' }, permission, plan),
@@ -1458,7 +1489,7 @@ window.__ModuleLoader__.load({
               select: selectOutsideComposer,
               inject: (sessionId) => ({
                 cwd: cwdOfSession(ctx, sessionId),
-                sendFirstPrompt: (id, text) => sendFirstPrompt(ctx, id, text),
+                sendFirstPrompt: (id, text, files) => sendFirstPrompt(ctx, id, text, files),
                 slotsApi: ctx.slots,
                 localeFace,
               }),
@@ -1492,7 +1523,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'remote'],
+      inject: ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'remote', 'fileUpload'],
       apply,
     };
   },

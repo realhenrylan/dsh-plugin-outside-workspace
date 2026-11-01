@@ -16,7 +16,7 @@
 - **归属**：会话不注册工作区，侧边栏归入「未分组 / Ungrouped」；
 - **首条消息**：DSH 原生在「空白且无工作区」时会禁用输入框，本插件接管 composer，并把工作区外会话的
   新会话页做成与普通新会话页相同的样子 —— 同样的标题、Agent 预设、权限选择、模型选择与发送按钮，
-  只把项目名称位置显示为「不在项目中」；Enter 发送 / Shift+Enter 换行。消息被接收后会话不再 blank，
+  只把项目名称位置显示为「不在项目中」；首条消息支持添加文件、粘贴图片或拖入附件；Enter 发送 / Shift+Enter 换行。消息被接收后会话不再 blank，
   自动交还宿主的标准对话 UI 和 composer。
 
 ![「未分组」分组行的「新会话（＋）」会创建并打开一个工作区外会话](docs/ungrouped-new-session.png)
@@ -52,7 +52,7 @@ profile 里新装 bundle 会热生效；如果页面没有出现新按钮，手�
   - `conversation.composer`（chain）：仅对「本插件刚创建的、仍为 blank 的」工作区外会话接管 composer。
     接管内容是一个**与普通新会话页同款**的 hero：复用宿主的 hero 布局与控制项（Agent 预设、当前会话的
     权限选择、模型选择），项目选择位（Workspace chip）改为不可点击的「不在项目中」；文本输入用普通
-    textarea 顶替宿主的 Lexical 编辑器，首条消息仍通过 `ctx.sessions.using(...)` 的
+    textarea 顶替宿主的 Lexical 编辑器；图片直接编码，其他文件通过宿主上传服务获取回执，首条消息通过 `ctx.sessions.using(...)` 的
     `binding.session.prompt([...], 'queue')` 发送；
   - 「未分组」分组行的「新会话（＋）」：DSH 原生只在分组带 Workspace id 时才在行内新建会话，
     「未分组」因此点了没反应（无请求、无报错）。插件在 document 捕获阶段识别该行最后一个
@@ -66,8 +66,8 @@ profile 里新装 bundle 会热生效；如果页面没有出现新按钮，手�
 ## 已知限制（v1）
 
 - 默认目录固定推导，暂未提供设置项；
-- 工作区外会话的**首条**消息只支持纯文本：`＋`（添加文件/指令）会提示暂不支持；模型与权限选择可用，
-  附件与 slash 指令从第二条消息起（交还宿主 composer 后）恢复；首条消息之后一切交还宿主；
+- 工作区外会话的首条消息支持文件和图片；`＋` 用于选择附件，slash 指令和 `@` 引用补全从第二条消息起
+  （交还宿主 composer 后）可用。图片和附件仍受 DSH 宿主的格式及大小限制；
 - 页面刷新后，若仍停留在某个**空白**的工作区外会话，新会话页不会恢复为插件接管版（发过消息的会话不受影响）；
 - 工作区外会话的首条消息页复刻了当前 DSH 新会话页的 DOM 与样式（hero 布局类、`conversation.hero.agentPreset` /
   `conversation.input.permission` / `conversation.input.model` 等控制位）。若后续 DSH 版本改动这些结构，
