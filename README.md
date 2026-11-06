@@ -1,5 +1,8 @@
 # dsh-plugin-outside-workspace
 
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![](https://img.shields.io/badge/dsh-0.2.2--rc.1-4D6BFE?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness/releases)
+
 在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）里，新建一个**不属于任何已注册工作区**的会话 —— 类似 Codex 的 projectless 会话 / 「不在工作区内工作」。
 
 ![新会话页的「不在工作区」按钮](docs/hero-button.png)
@@ -51,7 +54,9 @@ profile 里新装 bundle 会热生效；如果页面没有出现新按钮，手�
     `ctx.uiWorkspace.openSession(id)` 跳转过去；
   - `conversation.composer`（chain）：仅对「本插件刚创建的、仍为 blank 的」工作区外会话接管 composer。
     接管内容是一个**与普通新会话页同款**的 hero：复用宿主的 hero 布局与控制项（Agent 预设、当前会话的
-    权限选择、模型选择），项目选择位（Workspace chip）改为不可点击的「不在项目中」；文本输入用普通
+    权限选择、模型选择）—— stock 组件向子槽（如 `conversation.input.model.label`）传入的 `opts.fallback`
+    兜底内容（模型名）由插件渲染器按运行时契约回显，见「已知限制」；项目选择位（Workspace chip）
+    改为不可点击的「不在项目中」；文本输入用普通
     textarea 顶替宿主的 Lexical 编辑器；图片直接编码，其他文件通过宿主上传服务获取回执，首条消息通过 `ctx.sessions.using(...)` 的
     `binding.session.prompt([...], 'queue')` 发送；
   - 「未分组」分组行的「新会话（＋）」：DSH 原生只在分组带 Workspace id 时才在行内新建会话，
@@ -70,8 +75,9 @@ profile 里新装 bundle 会热生效；如果页面没有出现新按钮，手�
   （交还宿主 composer 后）可用。图片和附件仍受 DSH 宿主的格式及大小限制；
 - 页面刷新后，若仍停留在某个**空白**的工作区外会话，新会话页不会恢复为插件接管版（发过消息的会话不受影响）；
 - 工作区外会话的首条消息页复刻了当前 DSH 新会话页的 DOM 与样式（hero 布局类、`conversation.hero.agentPreset` /
-  `conversation.input.permission` / `conversation.input.model` 等控制位）。若后续 DSH 版本改动这些结构，
-  页面会安全退化（控制项缺失时只是不渲染，不会影响会话创建与发送）；
+  `conversation.input.permission` / `conversation.input.model` 等控制位）。插件为这些控制位建的渲染器镜像
+  DSH 运行时 `renderSlot` 的契约（`opts.fallback` 兜底、keyed 按 `opts.entryKey` 查找）；若后续
+  DSH 版本继续改动这些结构，页面会安全退化（控制项缺失时只是不渲染，不会影响会话创建与发送）；
 - 「未分组」分组行的「＋」接管依赖当前 DSH 侧边栏的 DOM：该行是
   `[role="treeitem"][data-row-key="workspace:"]`，新会话按钮是行内最后一个非弹层按钮。
   若后续 DSH 版本改了这个结构，接管会安全失效（按钮保持原生行为，不会再创建会话）；

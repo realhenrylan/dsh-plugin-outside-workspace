@@ -58,9 +58,12 @@
  *    staged upload receipts. After the first message the stock composer owns everything.
  *  - The start-page clone renders the stock control entries through the public
  *    Slots inspection API (`entriesOfSlot`/`spec`) and the standard Session kit
- *    the takeover itself receives. If a future DSH build stops exposing those
- *    entries, the seats simply render nothing; session creation and the first
- *    prompt keep working.
+ *    the takeover itself receives, with the runtime `renderSlot` shape:
+ *    stock entry renderers may pass `{fallback}` content (e.g. the model
+ *    picker's inline model-name labels) that displays when a slot has no
+ *    live entries. If a future DSH build stops exposing those entries, the
+ *    seats simply render nothing; session creation and the first prompt keep
+ *    working.
  *  - The sidebar takeover depends on the stock layout of the Ungrouped group
  *    row. It is diagnosed conservatively: a click only starts the outside
  *    Session when the row is the empty-workspace group row and the clicked
@@ -926,7 +929,10 @@ window.__ModuleLoader__.load({
      * Build a small renderer for the stock control slots placed inside the
      * outside-session hero. Entries receive exactly the standard Session kit
      * this takeover is given, their own injected face, their locale seat, and
-     * the owner props the stock parent would pass.
+     * the owner props the stock parent would pass. The renderer mirrors the
+     * runtime renderSlot contract (`opts.fallback` displayed when the slot has
+     * no live entries) so inner label slots of stock controls keep their
+     * fallback content.
      */
     function makeStockRenderer(slotsApi, standard, sessionId, localeFace, fallbackT) {
       const translatorCache = new Map();
@@ -958,25 +964,45 @@ window.__ModuleLoader__.load({
           ...ownerProps,
         });
       };
-      const renderSlot = (slotKey, ownerProps) => {
-        if (slotsApi === undefined || slotsApi === null) return null;
+      // Mirrors the runtime's renderSlot contract (beyond the public
+      // inspection API): stock entry components call
+      // renderSlot(key, ownerProps, opts) and opts.fallback is the
+      // displayed content when the slot has no live entries. Dropping
+      // opts made the stock model picker render EMPTY model names when no
+      // plugin extends 'conversation.input.model.label' (the label slot is
+      // only populated by extensions; the fallback carries model.name).
+      const renderSlot = (slotKey, ownerProps, opts) => {
+        const fallback = opts !== null && typeof opts === 'object' && opts.fallback !== undefined ? opts.fallback : null;
+        if (slotsApi === undefined || slotsApi === null) return fallback;
         let spec;
         try {
           spec = slotsApi.spec(slotKey);
         } catch (error) {
-          return null;
+          return fallback;
         }
-        if (spec === undefined) return null;
-        if (spec.scope === 'session' && sessionId === undefined) return null;
+        if (spec === undefined) return fallback;
+        if (spec.scope === 'session' && sessionId === undefined) return fallback;
         let entries;
         try {
           entries = slotsApi.entriesOfSlot(slotKey);
         } catch (error) {
-          return null;
+          return fallback;
         }
-        if (entries === undefined || entries.length === 0) return null;
-        if (spec.kind === 'single') return renderEntry(entries[0], ownerProps);
-        if (spec.kind !== 'list') return null;
+        if (spec.kind === 'single') {
+          const entry = entries !== undefined && entries.length > 0 ? entries[0] : undefined;
+          return entry !== undefined ? renderEntry(entry, ownerProps) : fallback;
+        }
+        if (spec.kind === 'keyed') {
+          const wanted = typeof opts === 'object' && opts !== null ? opts.entryKey : undefined;
+          const entry = entries !== undefined ? entries.find((candidate) => candidate.options.key === wanted) : undefined;
+          if (entry === undefined) {
+            const declared = entries !== undefined && entries.some((candidate) => candidate.options.key === wanted);
+            return declared ? null : fallback;
+          }
+          return renderEntry(entry, ownerProps);
+        }
+        if (spec.kind !== 'list') return fallback;
+        if (entries === undefined || entries.length === 0) return fallback;
         const ordered = entries.slice().sort((left, right) => (left.options.order ?? 0) - (right.options.order ?? 0));
         return ordered.map((entry, index) => h(
           React.Fragment,
